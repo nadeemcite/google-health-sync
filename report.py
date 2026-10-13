@@ -650,8 +650,9 @@ def generate(weight: float, height_cm: float, end: date | None = None) -> Path:
     pdf = OUT_DIR / f"fitbit-report-{end - timedelta(days=1):%Y-%m-%d}.pdf"
     html.write_text(build_html(a))
     chrome = next(c for c in (p if Path(p).exists() else shutil.which(p) for p in CHROMES) if c)
-    # Chromium refuses to run as root (inside the container) without --no-sandbox.
-    sandbox = ["--no-sandbox"] if os.geteuid() == 0 else []
+    # Chromium refuses to run as root (inside the container) without --no-sandbox, and some hosts
+    # (e.g. Ubuntu 24.04 with AppArmor user-namespace limits) need CHROME_NO_SANDBOX=1.
+    sandbox = ["--no-sandbox"] if os.geteuid() == 0 or os.environ.get("CHROME_NO_SANDBOX") else []
     subprocess.run([chrome, "--headless", "--disable-gpu", *sandbox, "--no-pdf-header-footer",
                     f"--print-to-pdf={pdf.resolve()}", html.resolve().as_uri()],
                    check=True, capture_output=True)

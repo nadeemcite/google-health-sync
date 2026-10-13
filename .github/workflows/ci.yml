@@ -17,6 +17,7 @@ jobs:
         env:
           HEALTH_DB: demo/health.db
           REPORT_DIR: demo
+          CHROME_NO_SANDBOX: "1"
         run: |
           uv run scripts/demo_data.py
           uv run report.py --weight 78 --height 175

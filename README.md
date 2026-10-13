@@ -188,6 +188,7 @@ sqlite3 data/health.db "SELECT civil_date, json_extract(payload, '$.dailyResting
 | Sync stops after ~7 days with `invalid_grant` | Your OAuth app is in *Testing*. Publish it, then run `healthsync.py auth` again |
 | `ACCOUNT_NOT_LINKED` | Open the Google Health app on your phone and finish setting up your profile |
 | `subscribe` fails with `FAILED_PRECONDITION` | Google couldn't verify the endpoint. Check the tunnel and `WEBHOOK_SECRET`, and that `curl https://<host>/healthz` returns `ok` |
+| Report fails with Chromium `SIGABRT` (systemd/Linux) | Set `CHROME_NO_SANDBOX=1` in `.env` |
 | Report says "Not enough data" | It needs at least one day of steps and one night of sleep in the last 7 days |
 
 ## Disclaimer
