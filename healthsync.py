@@ -9,6 +9,7 @@ Commands:
 """
 
 import argparse
+import base64
 import hmac
 import json
 import logging
@@ -267,12 +268,32 @@ def worker() -> None:
     log.info("worker: %d notifications -> %d fetches", len(rows), len(ranges))
 
 
-def weekly_report() -> None:
+REPORT_LOCK = threading.Lock()  # report.generate shares module state and an HTML scratch file
+REPORT_CACHE = timedelta(minutes=15)
+_live_report: tuple[datetime, Path] | None = None
+
+
+def build_report() -> Path:
     import report
     if not (os.environ.get("WEIGHT_KG") and os.environ.get("HEIGHT_CM")):
-        raise RuntimeError("set WEIGHT_KG and HEIGHT_CM in .env to get weekly reports")
-    path = report.generate(float(os.environ["WEIGHT_KG"]), float(os.environ["HEIGHT_CM"]))
+        raise RuntimeError("set WEIGHT_KG and HEIGHT_CM in .env to get reports")
+    with REPORT_LOCK:
+        return report.generate(float(os.environ["WEIGHT_KG"]), float(os.environ["HEIGHT_CM"]))
+
+
+def weekly_report() -> None:
+    path = build_report()
     alert(f"Weekly health report ready: {path.name}", priority="default")
+
+
+def live_report() -> Path:
+    """The last-7-days report, rebuilt at most every REPORT_CACHE so page reloads stay instant."""
+    global _live_report
+    if _live_report and datetime.now() - _live_report[0] < REPORT_CACHE and _live_report[1].exists():
+        return _live_report[1]
+    path = build_report()
+    _live_report = (datetime.now(), path)
+    return path
 
 
 # ---------- alerting ----------
@@ -307,7 +328,38 @@ def heartbeat() -> None:
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        self._reply(200 if self.path == "/healthz" else 404, b"ok")
+        path = self.path.split("?")[0]
+        if path == "/healthz":
+            return self._reply(200, b"ok")
+        if path in ("/", "/report.pdf"):
+            return self._report()
+        self._reply(404)
+
+    def _report(self) -> None:
+        password = os.environ.get("REPORT_PASSWORD")
+        if not password:
+            return self._reply(404)  # the report is never public: it's off until a password is set
+        user = os.environ.get("REPORT_USER", "me")
+        expected = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+        if not hmac.compare_digest(self.headers.get("Authorization", "").encode(), expected.encode()):
+            self.send_response(401)
+            self.send_header("WWW-Authenticate", 'Basic realm="Health report", charset="UTF-8"')
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        try:
+            pdf = live_report()
+        except (Exception, SystemExit) as e:  # report.analyse exits when there isn't enough data yet
+            log.exception("report failed")
+            return self._reply(503, f"Report unavailable: {e}".encode())
+        body = pdf.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'inline; filename="{pdf.name}"')
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:
         if self.path != "/webhook":

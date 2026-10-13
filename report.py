@@ -653,7 +653,7 @@ def generate(weight: float, height_cm: float, end: date | None = None) -> Path:
     # Chromium refuses to run as root (inside the container) without --no-sandbox, and some hosts
     # (e.g. Ubuntu 24.04 with AppArmor user-namespace limits) need CHROME_NO_SANDBOX=1.
     sandbox = ["--no-sandbox"] if os.geteuid() == 0 or os.environ.get("CHROME_NO_SANDBOX") else []
-    subprocess.run([chrome, "--headless", "--disable-gpu", *sandbox, "--no-pdf-header-footer",
+    subprocess.run([chrome, "--headless", "--disable-gpu", "--disable-dev-shm-usage", *sandbox, "--no-pdf-header-footer",
                     f"--print-to-pdf={pdf.resolve()}", html.resolve().as_uri()],
                    check=True, capture_output=True)
     return pdf

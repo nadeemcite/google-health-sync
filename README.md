@@ -24,6 +24,7 @@
 - **Survives downtime.** A daily catch-up with a 48-hour overlap fills any gaps after power cuts or reboots. Google also holds undelivered webhooks for 7 days.
 - **Light on bandwidth and storage.** Raw heart rate (~35,000 samples a day) is stored as 5-minute rollups (288 rows a day). Phone and third-party watch data are filtered out so steps aren't double counted. A month of data is about 5 MB.
 - **Weekly PDF report.** Sleep timing against your target window, daily steps, a heart-rate day, movement by hour and workouts, plus plain-language "going well" and "what to fix" sections. It adapts to night shifts and days off.
+- **Your report on any device.** Optionally serve the latest 7-day PDF at your tunnel URL, behind a password.
 - **Runs anywhere.** A single Docker container for amd64 and arm64 (Raspberry Pi 4/5, Mac mini, NAS), or plain Python with systemd.
 - **Alerts.** Optional [ntfy](https://ntfy.sh) push notifications when a sync fails, and a dead-man's-switch ping so you know when the device itself is down.
 
@@ -144,6 +145,15 @@ journalctl -u healthsync -f
    ```
    Google verifies the endpoint straight away: it must return `201` with the secret and `401` without it. Make sure the service is reachable first.
 
+### 6. Report web page (optional)
+
+Set `REPORT_PASSWORD` in `.env` (`openssl rand -base64 24`) and run `docker compose up -d`. Opening your tunnel URL, e.g. `https://health.example.com/`, then asks for a login (user `REPORT_USER`, default `me`) and shows the PDF for the last 7 full days.
+
+- The PDF is rebuilt at most every 15 minutes, so reloads are instant.
+- Without `REPORT_PASSWORD` the page returns `404`, so your report is never public by accident.
+- `/webhook` keeps its own secret, so Google's notifications are unaffected.
+- For extra protection, put [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in front of the hostname. Add a *Bypass* policy for the `/webhook` path so Google can still reach it.
+
 ## Usage
 
 ```sh
@@ -178,6 +188,7 @@ sqlite3 data/health.db "SELECT civil_date, json_extract(payload, '$.dailyResting
 
 - Everything stays on your machine. The only network calls go to Google's APIs and, if you configure them, ntfy and your heartbeat URL.
 - `.env`, `credentials/`, `data/` and `reports/` are git-ignored. Never commit them.
+- The report page is off unless `REPORT_PASSWORD` is set, and then needs a login over HTTPS.
 - Webhook payloads contain no health values, only "data type X changed in this time range". The receiver rejects any request without your shared secret.
 
 ## Troubleshooting
