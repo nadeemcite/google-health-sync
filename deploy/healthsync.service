@@ -1,0 +1,17 @@
+# systemd unit for running without Docker (e.g. Raspberry Pi OS).
+# Install: sudo cp deploy/healthsync.service /etc/systemd/system/ && sudo systemctl enable --now healthsync
+# Adjust User and WorkingDirectory to match where you cloned the repo.
+[Unit]
+Description=Google Health sync (webhooks + scheduled catch-up + weekly report)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/google-health-sync
+ExecStart=/home/pi/.local/bin/uv run --frozen healthsync.py serve
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

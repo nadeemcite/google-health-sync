@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets: never commit these
+.env
+credentials/
+
+# Your health data and generated reports
+data/
+reports/
+demo/
+*.db
+*.db-shm
+*.db-wal
+
+# Local tooling
+.claude/
+.DS_Store

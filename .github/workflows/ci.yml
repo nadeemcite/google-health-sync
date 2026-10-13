@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  demo-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run python -m compileall -q .
+      - name: Build a report from synthetic data
+        env:
+          HEALTH_DB: demo/health.db
+          REPORT_DIR: demo
+        run: |
+          uv run scripts/demo_data.py
+          uv run report.py --weight 78 --height 175
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-report
+          path: demo/*.pdf
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build for amd64 and arm64 (Raspberry Pi)
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: false
