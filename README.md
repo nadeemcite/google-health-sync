@@ -1,210 +1,165 @@
 <div align="center">
 
+<img src="web/favicon.svg" width="72" alt="">
+
 # google-health-sync
 
-**Own your Fitbit & Pixel Watch data.** Self-hosted sync of the [Google Health API](https://developers.google.com/health) into a local SQLite database, with real-time webhooks and a weekly one-page PDF report.
+**A personal health assistant that knows your data.**<br>
+Self-hosted. Syncs your Fitbit / Pixel Watch data from the [Google Health API](https://developers.google.com/health) into SQLite, then puts a chat assistant, a diet planner and a weekly report on top of it. It remembers what you tell it.
 
 [![CI](https://github.com/nadeemcite/google-health-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/nadeemcite/google-health-sync/actions/workflows/ci.yml)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 ![Docker: amd64 | arm64](https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED)
+![LLM: any via LiteLLM](https://img.shields.io/badge/LLM-any%20provider%20via%20LiteLLM-0f9d7a)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-<img src="docs/sample-report.png" alt="Sample weekly report generated from synthetic data" width="640">
+<img src="docs/screenshots/diet.png" alt="Diet tab: what to do right now, your plan and meal times, your target and food log" width="900">
 
-<sub>Sample report, generated from synthetic data with <code>scripts/demo_data.py</code>.</sub>
+<sub>Screenshots use synthetic data from <code>scripts/demo_data.py</code>. No real health data is in this repository.</sub>
 
 </div>
 
 ---
 
-## Features
+## What it does
 
-- **Your data, on your hardware.** Steps, sleep stages, workouts, heart rate, resting HR, HRV, weight and body fat in one SQLite file you can query.
-- **Near real-time.** Google pushes webhook notifications when new data syncs from your watch, and only the changed days are fetched.
-- **Survives downtime.** A daily catch-up with a 48-hour overlap fills any gaps after power cuts or reboots. Google also holds undelivered webhooks for 7 days.
-- **Light on bandwidth and storage.** Raw heart rate (~35,000 samples a day) is stored as 5-minute rollups (288 rows a day). Phone and third-party watch data are filtered out so steps aren't double counted. A month of data is about 5 MB.
-- **Weekly PDF report.** Sleep timing against your target window, daily steps, a heart-rate day, movement by hour and workouts, plus plain-language "going well" and "what to fix" sections. It adapts to night shifts and days off.
-- **Your report on any device.** Optionally serve the latest 7-day PDF at your tunnel URL, behind a password.
-- **Runs anywhere.** A single Docker container for amd64 and arm64 (Raspberry Pi 4/5, Mac mini, NAS), or plain Python with systemd.
-- **Alerts.** Optional [ntfy](https://ntfy.sh) push notifications when a sync fails, and a dead-man's-switch ping so you know when the device itself is down.
+Open the app and it behaves like a health expert who already knows you.
+
+| | |
+|---|---|
+| **Opens the conversation itself** | "Steps dropped to 3,100 yesterday against your usual 9k and you slept 5h 40m. Rough day, or was the band off?" It checks your data first, then asks about the cause. |
+| **Remembers you** | After every exchange it rewrites a plain-text `MEMORY.md` (injuries, food habits, schedule, reasons for off days). Next time it already knows, and it stops asking what you already answered. |
+| **Diet tab, one screen** | *What to do right now* (or "Avoid eating, have water" in your sleep window), your plan with meal times, and your target. No goal weight needed: it derives one from your BMI. |
+| **Built around your day** | Night shift? Meals, caffeine cut-off and "heavy food" rules follow *your* wake, work and sleep hours, plus whatever you told it. |
+| **Weight & food logging** | Weigh-ins from the Google Health app sync in on their own. Or log by hand, or just tell the assistant "I weigh 79.5 today". |
+| **Weekly report** | Sleep timing against your target window, steps, heart rate, workouts, and plain-language "what's going well / what to fix". As a web page or PDF. |
+| **Always fresh** | Google pushes a webhook when your watch syncs. A daily catch-up closes gaps after power cuts. A **Sync** button forces it. |
+| **Bring your own model** | [LiteLLM](https://docs.litellm.ai) underneath: Ollama Cloud, a local Ollama, OpenAI, Gemini, and more, by changing one setting. |
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/chat.png" alt="Chat: the assistant opens with an observation from your data and asks why"></td>
+<td width="50%"><img src="docs/screenshots/report.png" alt="Weekly report as a responsive web page"></td>
+</tr>
+<tr>
+<td align="center"><sub>The assistant opens with something it noticed</sub></td>
+<td align="center"><sub>The weekly report, as a web page (also a PDF)</sub></td>
+</tr>
+</table>
+
+## Can I try it?
+
+**Not on my instance, by design.** It reads one person's health data (sleep, heart rate, weight), so nothing is hosted publicly and there is no shared login. The code is open instead: you run your own copy, with **your own Google Cloud project, your own watch data and your own model key**. Nothing of mine is involved.
+
+- **Full walkthrough:** [docs/TUTORIAL.md](docs/TUTORIAL.md) (about 45 minutes, most of it Google Cloud setup).
+- **Two-minute look without a Google account:** run it on synthetic data, see [Try it with demo data](#try-it-with-demo-data).
+
+## Quick start
+
+You need Docker, a Google Cloud project with the Google Health API enabled, and an LLM key (or a local Ollama).
+
+```sh
+git clone https://github.com/nadeemcite/google-health-sync.git
+cd google-health-sync
+cp .env.example .env              # fill in Google client, routine, model (see the tutorial)
+uv run healthsync.py auth         # one-time Google sign-in in your browser
+docker compose up -d --build
+open http://localhost:18787
+```
+
+Each step in detail, including the Google Cloud clicks: **[docs/TUTORIAL.md](docs/TUTORIAL.md)**.
+
+## Try it with demo data
+
+No Google account, no watch. The assistant's replies need a model, but everything else (diet tab, report, logging, charts) works from seeded data:
+
+```sh
+uv sync
+export HEALTH_DB=demo/health.db MEMORY_FILE=demo/MEMORY.md REPORT_DIR=demo HEIGHT_CM=175 \
+       WORK_HOURS=22-06 TARGET_BEDTIME=07-08 TARGET_WAKE=15-16
+uv run scripts/demo_data.py          # a week of synthetic sleep, steps, heart rate, workouts
+uv run scripts/seed_demo_app.py      # weight, a chat, a diet plan, food log
+PORT=18996 uv run healthsync.py serve
+open http://localhost:18996
+```
+
+To also chat, add `ASSISTANT_MODEL` and its key (see [Choose a model](docs/TUTORIAL.md#4-choose-a-model)).
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    W[Fitbit / Pixel Watch] -->|app sync| G[(Google Health API)]
-    G -- "webhook: 'steps changed on 13 Oct'" --> T[HTTPS tunnel<br/>e.g. Cloudflare]
-    T --> R[Receiver<br/>verifies secret, queues, replies 204]
-    R --> Q[(SQLite)]
-    Q --> K[Worker · every 15 min<br/>merges notifications, fetches changed days]
-    K -->|list / rollUp| G
-    C[Catch-up · daily<br/>everything since last sync, 48h overlap] -->|list / rollUp| G
-    K --> Q
-    C --> Q
-    Q --> P[Weekly PDF report · Mondays]
+  W[Fitbit / Pixel Watch] -->|app sync| G[(Google Health API)]
+  G -- "webhook: steps changed on 13 Oct" --> T[HTTPS tunnel]
+  T --> S
+  subgraph S [healthsync container]
+    direction TB
+    R[Receiver + worker] --> DB[(SQLite)]
+    C[Daily catch-up] --> DB
+    DB --> M[metrics.py<br/>daily metrics, BMI, signals]
+    M --> A[assistant.py<br/>tools + MEMORY.md]
+    M --> P[Diet plan + now-advice<br/>hourly refresh]
+    A --> UI[Web app<br/>chat, diet, report]
+    P --> UI
+  end
+  A <-->|LiteLLM| L[Your model<br/>Ollama / OpenAI / Gemini / ...]
+  G <-->|catch-up| C
 ```
 
-| Job | When | What it fetches |
-|---|---|---|
-| Webhook receiver | on every notification | nothing; it only queues the notification and replies immediately |
-| Worker | every 15 minutes | only the date ranges named in queued notifications, merged per data type |
-| Catch-up | daily at `CATCHUP_HOUR`, or at startup if more than 26h have passed | everything since the last sync, re-fetching the last 48h |
-| Report | Mondays, an hour after the catch-up | nothing; it reads SQLite and writes `reports/fitbit-report-<date>.pdf` |
+The model never sees the database directly. It gets a handful of **tools** (`get_daily_metrics`, `get_weight_history`, `log_weight`, `log_food`, `get_food_log`, `set_profile`) and is told never to state a fact about your body that it did not read from a tool or from `MEMORY.md`. A `null` from the band means "recorded nothing", and the assistant asks instead of assuming you were inactive.
 
-Webhooks are optional. Without a public URL it runs in polling-only mode (the daily catch-up, plus `POLL_EVERY_HOURS` if you set it).
+Design notes, data model and trade-offs: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
-## Requirements
+## Tech
 
-- A Fitbit or Pixel Watch synced to the **Google Health app** (formerly the Fitbit app).
-- A Google Cloud project with access to the **Google Health API**.
-  > ⚠️ At the time of writing, Google says it is *"not onboarding new projects at this time"* for the Google Health API. Check the [Google Health API docs](https://developers.google.com/health) before you start.
-- An always-on machine: Raspberry Pi 4/5 (64-bit OS, 2 GB+ RAM recommended), a mini PC, a NAS or a Mac, with **Docker**, or Python 3.12 and [uv](https://docs.astral.sh/uv/).
-- Optional: a public HTTPS hostname for webhooks, e.g. a free [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/).
+Python 3.12 standard-library HTTP server · SQLite (WAL) · [LiteLLM](https://docs.litellm.ai) · a single static HTML page with vanilla JS (no build step) · headless Chromium for the PDF · Docker (amd64 + arm64) · GitHub Actions CI with tests that need no network or model.
 
-## Setup
+## Configuration
 
-### 1. Google Cloud
-
-1. Create a project in the [Google Cloud Console](https://console.cloud.google.com) and enable **Google Health API** (`health.googleapis.com`).
-2. **Google Auth Platform → Audience:** set the user type to *External*.
-   - Add yourself as a test user to get started.
-   - Then click **Publish app**. While an app is in *Testing*, Google expires refresh tokens after **7 days**, which breaks unattended syncing. A personal app can stay *unverified*: you'll see a "Google hasn't verified this app" screen once when signing in, and you don't need to submit it for review.
-3. **Data Access:** add these scopes:
-   ```
-   https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly
-   https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly
-   https://www.googleapis.com/auth/googlehealth.sleep.readonly
-   https://www.googleapis.com/auth/googlehealth.profile.readonly
-   ```
-4. **Clients → Create client → Desktop app.** Copy the client ID and secret.
-   - A Desktop client needs no redirect URI.
-   - If you use a *Web* client instead, add `http://localhost:8080` as an authorized redirect URI.
-5. Note your **project number** (Cloud Console dashboard). You only need it for webhooks.
-
-### 2. Configure
-
-```sh
-git clone https://github.com/nadeemcite/google-health-sync.git
-cd google-health-sync
-cp .env.example .env
-```
-
-Fill in `.env`. Every setting is documented in [`.env.example`](.env.example). The important ones:
+Everything is an environment variable in `.env`; every one is documented in [`.env.example`](.env.example) and tabulated in [docs/CONFIGURATION.md](docs/CONFIGURATION.md). The ones you will touch first:
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | | Your OAuth client from step 1 |
-| `WEIGHT_KG`, `HEIGHT_CM` | `78`, `175` | BMI in the report |
-| `TZ` | `Europe/London` | Scheduler timezone |
-| `TARGET_BEDTIME`, `TARGET_WAKE` | `23-00`, `07-08` | Your target sleep window (hour ranges; overnight is fine) |
-| `WORK_HOURS` | `09-17` or `18-03` | Optional; enables shift-aware advice |
-| `CATCHUP_HOUR` | `10` | Daily sync hour, about 2h after you usually wake |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | | Your OAuth client |
+| `ASSISTANT_MODEL` | `ollama_chat/glm-5.3-flash` | Any [LiteLLM](https://docs.litellm.ai/docs/providers) `provider/model` |
+| `OLLAMA_API_KEY` (or the provider's key) | | Key for the model above |
+| `WORK_HOURS`, `TARGET_BEDTIME`, `TARGET_WAKE` | `22-06`, `07-08`, `15-16` | Your day, as hour ranges (overnight is fine) |
+| `TZ` | `Asia/Kolkata` | Scheduler timezone |
 
-### 3. Sign in once
+## Privacy and security
 
-Sign-in needs a browser, so do it on your laptop even if the service will run on a headless Pi:
+- **Your data stays on your machine, with one exception:** when you use the assistant, your messages, `MEMORY.md` and whatever the assistant looks up (daily steps, sleep, weights) go to the model provider you configured. A local Ollama keeps everything on your network.
+- `.env`, `credentials/`, `data/` and `reports/` are git-ignored. **Never commit them.**
+- The web app has **no login by default**. Put it behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) or set `REPORT_BASIC_AUTH=true`. Anyone who can reach it can read your data, log weights and spend your model credit.
+- `/webhook` has its own shared secret and carries no health values, only "data type X changed in this range".
+- POST endpoints require `Content-Type: application/json`, which a cross-site form cannot send.
+- Not medical advice. The assistant is told to send you to a clinician for anything that sounds serious, but it is a language model working from wearable data.
 
-```sh
-uv run healthsync.py auth    # opens Google sign-in, writes credentials/token.json
-uv run healthsync.py catchup # optional: test it; backfills 30 days into data/health.db
-```
+## Limits (honest ones)
 
-Then copy `credentials/token.json` to the same path on your server. Copying `data/health.db` too skips the backfill there.
+- **Single user.** One person's data, one conversation history.
+- **Google Health API access.** At the time of writing Google said it was *"not onboarding new projects"* for this API. Check [the docs](https://developers.google.com/health) before you start.
+- **Calorie numbers are estimates** from weight, height and activity. Age and sex are not used.
+- **Model quality varies.** Small or "flash" models call tools less reliably and may be slow when they reason. If the assistant makes claims without checking the data, use a larger model.
+- **The assistant only knows food you log or mention.**
 
-### 4a. Run with Docker (recommended)
-
-Docker works on Raspberry Pi OS 64-bit, Linux, macOS and NAS boxes:
-
-```sh
-# Raspberry Pi: install Docker first:  curl -fsSL https://get.docker.com | sh
-docker compose up -d --build
-docker compose logs -f
-```
-
-`restart: unless-stopped` brings it back after reboots and power cuts. The first catch-up runs straight away.
-
-### 4b. Run without Docker (Raspberry Pi / systemd)
+## Development
 
 ```sh
-sudo apt install -y chromium fonts-inter     # for the PDF report
-curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
-sudo cp deploy/healthsync.service /etc/systemd/system/   # edit User/WorkingDirectory first
-sudo systemctl enable --now healthsync
-journalctl -u healthsync -f
+uv run python -m unittest discover -s tests -v    # 14 tests, no network, no model, no Google
+uv run scripts/demo_data.py && HEALTH_DB=demo/health.db uv run report.py --weight 78 --height 175
 ```
 
-### 5. Webhooks (optional)
-
-1. Expose the service on a public HTTPS hostname. With a Cloudflare Tunnel, add a public hostname such as `health.example.com` pointing to `http://localhost:18787`.
-2. Set `GOOGLE_PROJECT_NUMBER`, `WEBHOOK_URL` and `WEBHOOK_SECRET` (`openssl rand -hex 32`) in `.env`, then restart.
-3. Register the subscriber once. This needs [`gcloud`](https://cloud.google.com/sdk/docs/install), logged in as a project owner:
-   ```sh
-   gcloud auth login
-   uv run healthsync.py subscribe
-   ```
-   Google verifies the endpoint straight away: it must return `201` with the secret and `401` without it. Make sure the service is reachable first.
-
-### 6. Report web page (optional)
-
-Set `REPORT_PASSWORD` in `.env` (`openssl rand -base64 24`) and run `docker compose up -d`. Opening your tunnel URL, e.g. `https://health.example.com/`, then asks for a login (user `REPORT_USER`, default `me`) and shows the PDF for the last 7 full days.
-
-- The PDF is rebuilt at most every 15 minutes, so reloads are instant.
-- Without `REPORT_PASSWORD` the page returns `404`, so your report is never public by accident.
-- `/webhook` keeps its own secret, so Google's notifications are unaffected.
-- For extra protection, put [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/) in front of the hostname. Add a *Bypass* policy for the `/webhook` path so Google can still reach it.
-
-## Usage
-
-```sh
-uv run healthsync.py catchup                 # sync now
-uv run healthsync.py worker                  # process queued webhook notifications
-uv run report.py --weight 78 --height 175    # report for the last 7 days
-uv run report.py --weight 78 --height 175 --end 2026-10-06
-```
-
-Try the report without a Google account:
-
-```sh
-uv run scripts/demo_data.py
-HEALTH_DB=demo/health.db REPORT_DIR=demo uv run report.py --weight 78 --height 175
-```
-
-Query your data directly:
-
-```sh
-sqlite3 data/health.db "SELECT civil_date, json_extract(payload, '$.dailyRestingHeartRate.beatsPerMinute')
-                        FROM data_points WHERE data_type = 'daily-resting-heart-rate' ORDER BY civil_date DESC LIMIT 7"
-```
-
-| Table | Contents |
+| File | Role |
 |---|---|
-| `data_points` | One row per API data point (`steps`, `sleep`, `exercise`, `daily-resting-heart-rate`, `daily-heart-rate-variability`, `weight`, `body-fat`), raw JSON in `payload` |
-| `heart_rate_5min` | Heart-rate rollups: avg / min / max per 5-minute window |
-| `webhook_queue` | Received notifications and when they were processed |
-| `sync_state` | Per-type sync watermarks and job timestamps |
-
-## Privacy
-
-- Everything stays on your machine. The only network calls go to Google's APIs and, if you configure them, ntfy and your heartbeat URL.
-- `.env`, `credentials/`, `data/` and `reports/` are git-ignored. Never commit them.
-- The report page is off unless `REPORT_PASSWORD` is set, and then needs a login over HTTPS.
-- Webhook payloads contain no health values, only "data type X changed in this time range". The receiver rejects any request without your shared secret.
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| `redirect_uri_mismatch` on sign-in | Use a *Desktop* OAuth client, or add `http://localhost:8080` (exact match, no trailing slash) to your Web client |
-| Sync stops after ~7 days with `invalid_grant` | Your OAuth app is in *Testing*. Publish it, then run `healthsync.py auth` again |
-| `ACCOUNT_NOT_LINKED` | Open the Google Health app on your phone and finish setting up your profile |
-| `subscribe` fails with `FAILED_PRECONDITION` | Google couldn't verify the endpoint. Check the tunnel and `WEBHOOK_SECRET`, and that `curl https://<host>/healthz` returns `ok` |
-| Report fails with Chromium `SIGABRT` (systemd/Linux) | Set `CHROME_NO_SANDBOX=1` in `.env` |
-| Report says "Not enough data" | It needs at least one day of steps and one night of sleep in the last 7 days |
-
-## Disclaimer
-
-Not affiliated with Google or Fitbit. The report gives general wellness information, not medical advice.
+| `healthsync.py` | Sync jobs, scheduler, webhook receiver, HTTP handler |
+| `fetch.py` | Google OAuth and API field mapping |
+| `metrics.py` | Read-side: daily metrics, weight, BMI, diet target, signals |
+| `assistant.py` | LiteLLM calls, tools, `MEMORY.md`, diet plan and now-advice |
+| `webapp.py` | Routes for the page and JSON API |
+| `report.py` | The weekly report (HTML + PDF) |
+| `web/index.html` | The whole frontend |
 
 ## License
 
