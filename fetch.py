@@ -11,6 +11,8 @@ Usage:
 import argparse
 import json
 import os
+import sys
+import webbrowser
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -32,7 +34,42 @@ OUTPUT_DIR = Path("data")
 SAMPLE_TYPES = {"weight", "body_fat", "blood_glucose", "heart_rate"}
 
 
-def get_credentials() -> Credentials:
+REDIRECT = "http://localhost:8080"  # a Desktop client accepts any localhost redirect, with no server needed for the paste flow
+
+
+def can_open_browser() -> bool:
+    """False on servers: no display, or no browser the standard library can launch."""
+    if sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return False
+    try:
+        webbrowser.get()
+        return True
+    except webbrowser.Error:
+        return False
+
+
+def sign_in_by_paste(flow: InstalledAppFlow) -> Credentials:
+    """Sign-in for machines without a browser: open the link on any device, then paste back what the browser ends up on.
+
+    After you approve, Google redirects to http://localhost:8080/?code=... Nothing is listening there on your other device, so the
+    page shows an error. That is expected: copy the full address from the address bar (or just the code= value) and paste it here.
+    """
+    flow.redirect_uri = REDIRECT
+    url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+    print("\nNo browser on this machine. Sign in from any device:\n")
+    print(f"  1. Open this link in a browser (your laptop or phone):\n\n{url}\n")
+    print("  2. Approve access. Your browser then shows 'This site can't be reached' on localhost:8080. That is expected.")
+    print("  3. Copy the FULL address from the address bar (it starts with http://localhost:8080/?state=...) and paste it below.\n")
+    pasted = input("Paste here: ").strip()
+    os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")  # the redirect is plain http://localhost, as in run_local_server
+    if pasted.startswith("http"):
+        flow.fetch_token(authorization_response=pasted)
+    else:
+        flow.fetch_token(code=pasted)  # they pasted just the code= value
+    return flow.credentials
+
+
+def get_credentials(headless: bool = False) -> Credentials:
     creds = None
     if TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
@@ -55,9 +92,12 @@ def get_credentials() -> Credentials:
             }
         }
         flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-        creds = flow.run_local_server(
-            port=8080, redirect_uri_trailing_slash=False, access_type="offline", prompt="consent"
-        )
+        if headless or not can_open_browser():
+            creds = sign_in_by_paste(flow)
+        else:
+            creds = flow.run_local_server(
+                port=8080, redirect_uri_trailing_slash=False, access_type="offline", prompt="consent"
+            )
     TOKEN_FILE.parent.mkdir(exist_ok=True)
     TOKEN_FILE.write_text(creds.to_json())
     return creds

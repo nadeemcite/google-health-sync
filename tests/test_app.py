@@ -1,14 +1,18 @@
 """Tests that need no network, Google account or model: the logic, the HTTP routes and the assistant's tool loop (model faked)."""
 
+import contextlib
+import io
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
 import types
 import unittest
+from unittest import mock
 from datetime import datetime
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
 
 TMP = tempfile.mkdtemp()
@@ -20,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import requests  # noqa: E402
 
 import assistant  # noqa: E402
+import fetch  # noqa: E402
 import healthsync  # noqa: E402
 import metrics  # noqa: E402
 
@@ -126,6 +131,65 @@ class Web(unittest.TestCase):
         self.assertEqual(len(requests.get(self.base + "/api/chat").json()["messages"]), len(before) + 1)
         self.assertEqual(self.post("/api/new-chat", {}).json()["messages"], [])
         conn.close()
+
+
+class HeadlessSignIn(unittest.TestCase):
+    """`auth` on a server with no browser: print a link, take back the pasted redirect. Token endpoint is a local fake."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.requests = []
+        outer = cls
+
+        class Token(BaseHTTPRequestHandler):
+            def log_message(self, *a): ...
+
+            def do_POST(self):
+                outer.requests.append(dict(x.split("=", 1) for x in self.rfile.read(int(self.headers["Content-Length"])).decode().split("&")))
+                body = json.dumps({"access_token": "at", "refresh_token": "rt", "expires_in": 3600, "token_type": "Bearer",
+                                   "scope": " ".join(fetch.SCOPES)}).encode()
+                self.send_response(200); self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+
+        cls.server = HTTPServer(("127.0.0.1", 0), Token)
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def run_paste(self, make_answer):
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        flow = InstalledAppFlow.from_client_config({"installed": {
+            "client_id": "cid", "client_secret": "sec", "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": f"http://127.0.0.1:{self.server.server_port}/token", "redirect_uris": ["http://localhost"]}}, fetch.SCOPES)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch("builtins.input", lambda _="": make_answer(out.getvalue())):
+            creds = fetch.sign_in_by_paste(flow)
+        return creds, out.getvalue()
+
+    def test_pasting_the_redirect_url_signs_in(self):
+        self.requests.clear()
+        state = lambda text: re.search(r"state=([^&\s]+)", text).group(1)
+        creds, shown = self.run_paste(lambda text: f"http://localhost:8080/?state={state(text)}&code=thecode&scope=x")
+        self.assertEqual((creds.token, creds.refresh_token), ("at", "rt"))
+        self.assertIn("redirect_uri=http%3A%2F%2Flocalhost%3A8080", shown)
+        self.assertIn("access_type=offline", shown)
+        self.assertEqual(self.requests[-1]["code"], "thecode")
+        self.assertIn("code_verifier", self.requests[-1])  # PKCE survives the paste flow
+
+    def test_pasting_only_the_code_works(self):
+        creds, _ = self.run_paste(lambda text: "just-the-code")
+        self.assertEqual(creds.refresh_token, "rt")
+        self.assertEqual(self.requests[-1]["code"], "just-the-code")
+
+    def test_wrong_state_is_rejected(self):
+        with self.assertRaises(Exception):
+            self.run_paste(lambda text: "http://localhost:8080/?state=forged&code=c")
+
+    def test_servers_without_a_display_use_the_paste_flow(self):
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(fetch.can_open_browser())
 
 
 class Assistant(unittest.TestCase):

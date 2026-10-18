@@ -73,17 +73,36 @@ Weight and height are **not** required here. Log them in the app, or let Google 
 
 ## 3. Sign in to Google once
 
-This opens your browser, so do it on a machine that has one (even if the service will later run on a headless box):
-
 ```sh
 uv sync
-uv run healthsync.py auth        # opens Google sign-in, writes credentials/token.json
+uv run healthsync.py auth        # signs in to Google and writes credentials/token.json
 uv run healthsync.py catchup     # optional: fetches the last 30 days into data/health.db
 ```
 
 If Google warns the app is unverified, choose **Advanced → Go to (app name)**. That is expected for your own personal client.
 
-On a headless server, copy `credentials/token.json` (and optionally `data/health.db`, which skips the backfill) to the same paths there. The refresh token lasts, as long as you published the app in step 1.6.
+### On a server with no browser (Ubuntu, Raspberry Pi OS Lite, a VPS)
+
+You do **not** need a browser on the server. `auth` notices there is none (no display) and switches to a copy-and-paste sign-in. You can also force it with `--no-browser`:
+
+```sh
+uv run healthsync.py auth --no-browser
+```
+
+It prints a long link. Then:
+
+1. Open the link in a browser on **any other device** (laptop or phone) and approve access.
+2. Your browser ends on a page that says *"This site can't be reached"* at `localhost:8080`. **That is expected**: nothing is listening there on your laptop.
+3. Copy the **full address** from the address bar. It looks like `http://localhost:8080/?state=...&code=...`. Paste it back into the terminal at `Paste here:`.
+
+It saves `credentials/token.json` and you are done. (Pasting only the `code=` value also works.)
+
+Alternatives if you prefer:
+
+- **SSH tunnel:** `ssh -L 8080:localhost:8080 you@server`, run `uv run healthsync.py auth` on the server and open the printed link on your laptop. The redirect then reaches the server directly.
+- **Sign in on your laptop** and copy `credentials/token.json` (and optionally `data/health.db`, which skips the backfill) to the same paths on the server.
+
+The refresh token lasts as long as you published the app in step 1.6.
 
 ## 4. Choose a model
 
@@ -186,6 +205,7 @@ Without webhooks it still syncs daily (plus `POLL_EVERY_HOURS` if set). With the
 
 | Symptom | Fix |
 |---|---|
+| `could not locate runnable browser` | You are on a server with no browser. Update to the latest code, or run `uv run healthsync.py auth --no-browser` and follow the paste steps in step 3. |
 | `redirect_uri_mismatch` at sign-in | Use a **Desktop** OAuth client. With a Web client, add `http://localhost:8080` exactly (no trailing slash) as a redirect URI. |
 | Sync stops after ~7 days with `invalid_grant` | The app is still in *Testing*. Publish it (step 1.6), then run `uv run healthsync.py auth` again. |
 | `ACCOUNT_NOT_LINKED` | Open the Google Health app on your phone and finish setting up your profile. |

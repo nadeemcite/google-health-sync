@@ -62,7 +62,7 @@ You need Docker, a Google Cloud project with the Google Health API enabled, and 
 git clone https://github.com/nadeemcite/google-health-sync.git
 cd google-health-sync
 cp .env.example .env              # fill in Google client, routine, model (see the tutorial)
-uv run healthsync.py auth         # one-time Google sign-in in your browser
+uv run healthsync.py auth         # one-time Google sign-in (no browser on this machine? add --no-browser)
 docker compose up -d --build
 open http://localhost:18787
 ```

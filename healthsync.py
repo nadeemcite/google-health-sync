@@ -1,7 +1,7 @@
 """Keep a local SQLite copy of your Google Health data in sync.
 
 Commands:
-    uv run healthsync.py auth        # one-time browser sign-in (needs a machine with a browser)
+    uv run healthsync.py auth        # one-time Google sign-in (no browser on this machine? it prints a link to open elsewhere)
     uv run healthsync.py catchup     # fetch everything since the last sync, with a 48h overlap
     uv run healthsync.py worker      # fetch the ranges named in queued webhook notifications
     uv run healthsync.py serve       # webhook receiver + scheduler (what the container runs)
@@ -570,11 +570,12 @@ def subscribe() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["auth", "catchup", "worker", "serve", "subscribe"])
+    parser.add_argument("--no-browser", action="store_true", help="auth: print a link to open on another device instead of launching a browser (automatic on servers)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if args.command == "auth":
         from fetch import get_credentials
-        get_credentials()
+        get_credentials(headless=args.no_browser)
         print(f"Saved {TOKEN_FILE}")
     else:
         {"catchup": catchup, "worker": worker, "serve": serve, "subscribe": subscribe}[args.command]()
