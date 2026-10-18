@@ -23,7 +23,7 @@ You need:
 | **[uv](https://docs.astral.sh/uv/)** and a **browser** on this machine | For the one-time Google sign-in. `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | A way to call an LLM | A key for Ollama Cloud, OpenAI, Gemini..., or a local [Ollama](https://ollama.com). See step 4. |
 
-> ⚠️ **Check first:** at the time of writing, Google stated it was *"not onboarding new projects"* for the Google Health API. If step 1 is blocked for you, that is why. See the [docs](https://developers.google.com/health) for current status. This is a Google limit, not something this project can work around.
+> **Good to know:** setup is self-serve through Google Cloud, and your own account works as a test user. An unverified app is limited to 100 users, which is plenty for personal use. Making it public would need Google's app verification and a security review, because every Google Health scope is classified Restricted. Access rules are Google's and can change, so check the [Google Health API docs](https://developers.google.com/health) if step 1 is blocked for you.
 
 ## 1. Google Cloud project
 

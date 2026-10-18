@@ -138,7 +138,7 @@ Everything is an environment variable in `.env`; every one is documented in [`.e
 ## Limits (honest ones)
 
 - **Single user.** One person's data, one conversation history.
-- **Google Health API access.** At the time of writing Google said it was *"not onboarding new projects"* for this API. Check [the docs](https://developers.google.com/health) before you start.
+- **Google Health API access is Google's to control.** Setup is self-serve through Google Cloud (create a project, enable the API, add yourself as a test user). Unverified apps are limited to 100 users, and all scopes are classified Restricted, so a public launch needs Google's verification and a security review. Check the [Google Health API docs](https://developers.google.com/health) for current availability.
 - **Calorie numbers are estimates** from weight, height and activity. Age and sex are not used.
 - **Model quality varies.** Small or "flash" models call tools less reliably and may be slow when they reason. If the assistant makes claims without checking the data, use a larger model.
 - **The assistant only knows food you log or mention.**
