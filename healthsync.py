@@ -55,6 +55,7 @@ HR_MAX_RANGE = timedelta(days=14)  # API limit for heart-rate rollUp
 BACKFILL_DAYS = 30
 OVERLAP_DAYS = 2  # sleep and daily summaries are revised for a while after the fact
 WORKER_EVERY = timedelta(minutes=15)
+DIET_EVERY = timedelta(minutes=55)  # keeps the Diet tab's "what to do now" fresh
 CATCHUP_MAX_GAP = timedelta(hours=26)  # run immediately if a power cut skipped one
 REPORT_WEEKDAY = 0  # Monday, an hour after the catch-up
 
@@ -84,7 +85,17 @@ def db() -> sqlite3.Connection:
             id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT NOT NULL,
             payload TEXT NOT NULL, processed_at TEXT);
         CREATE TABLE IF NOT EXISTS sync_state (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS profile (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS weight_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, measured_at TEXT NOT NULL, kg REAL NOT NULL,
+            source TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS food_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, eaten_at TEXT NOT NULL, text TEXT NOT NULL, kcal INTEGER);
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL);
     """)
+    if "session" not in [r[1] for r in conn.execute("PRAGMA table_info(chat_messages)")]:
+        conn.execute("ALTER TABLE chat_messages ADD COLUMN session INTEGER NOT NULL DEFAULT 1")  # chats started before sessions existed
     return conn
 
 
@@ -274,11 +285,15 @@ _live_report: tuple[datetime, Path] | None = None
 
 
 def build_report() -> Path:
+    import metrics
     import report
-    if not (os.environ.get("WEIGHT_KG") and os.environ.get("HEIGHT_CM")):
-        raise RuntimeError("set WEIGHT_KG and HEIGHT_CM in .env to get reports")
+    conn = db()
+    weight, height = metrics.current_weight(conn), metrics.get_profile(conn)["height_cm"]
+    conn.close()
+    if not (weight and height):
+        raise RuntimeError("no weight or height yet: log them in the app, or set WEIGHT_KG and HEIGHT_CM in .env")
     with REPORT_LOCK:
-        return report.generate(float(os.environ["WEIGHT_KG"]), float(os.environ["HEIGHT_CM"]))
+        return report.generate(weight["kg"], height)
 
 
 def weekly_report() -> None:
@@ -294,6 +309,63 @@ def live_report() -> Path:
     path = build_report()
     _live_report = (datetime.now(), path)
     return path
+
+
+_sync = {"running": False, "error": None, "finished_at": None}
+_diet = {"running": False, "error": None, "finished_at": None}
+_job_lock = threading.Lock()
+
+
+def _start_job(status: dict, name: str, fn) -> bool:
+    """Run `fn` in the background and record its outcome in `status`. False if it is already running."""
+    with _job_lock:
+        if status["running"]:
+            return False
+        status.update(running=True, error=None)
+
+    def run() -> None:
+        try:
+            fn()
+        except (Exception, SystemExit) as e:
+            log.exception("%s failed", name)
+            status["error"] = f"{type(e).__name__}: {e}"[:200]
+        finally:
+            status.update(running=False, finished_at=now_utc().isoformat())
+    threading.Thread(target=run, daemon=True).start()
+    return True
+
+
+def start_sync() -> bool:
+    """The "sync now" button: a catch-up in the background."""
+    return _start_job(_sync, "manual sync", catchup)
+
+
+def refresh_diet(full: bool = False) -> None:
+    """Bring the Diet tab up to date: rebuild the plan if it is stale (or `full`), then what to do right now."""
+    import assistant
+    conn = db()
+    try:
+        if not assistant.plan_inputs(conn):
+            return  # no weight or height yet
+        if full or assistant.plan_is_stale(conn):
+            assistant.diet_plan(conn)
+        assistant.now_advice(conn)
+        with conn:
+            set_state(conn, "last_diet_refresh", now_utc().isoformat())
+    finally:
+        conn.close()
+
+
+def start_diet_refresh(full: bool = False) -> bool:
+    return _start_job(_diet, "diet refresh", lambda: refresh_diet(full))
+
+
+def diet_status() -> dict:
+    return dict(_diet)
+
+
+def sync_status() -> dict:
+    return dict(_sync)
 
 
 # ---------- alerting ----------
@@ -331,21 +403,53 @@ class WebhookHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/healthz":
             return self._reply(200, b"ok")
-        if path in ("/", "/report.pdf"):
-            return self._report()
-        self._reply(404)
+        if path == "/report.pdf":
+            return self._report_pdf()
+        self._web("GET", path)
 
-    def _report(self) -> None:
+    def _authorized(self) -> bool:
+        """Optional HTTP basic auth for the web app (off unless REPORT_BASIC_AUTH is set). /webhook has its own secret."""
+        if os.environ.get("REPORT_BASIC_AUTH", "").lower() not in ("1", "true", "yes", "on"):
+            return True
         password = os.environ.get("REPORT_PASSWORD")
         if not password:
-            return self._reply(404)  # the report is never public: it's off until a password is set
+            self._reply(404)  # basic auth requested but no password set: fail closed
+            return False
         user = os.environ.get("REPORT_USER", "me")
         expected = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
-        if not hmac.compare_digest(self.headers.get("Authorization", "").encode(), expected.encode()):
-            self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="Health report", charset="UTF-8"')
-            self.send_header("Content-Length", "0")
-            self.end_headers()
+        if hmac.compare_digest(self.headers.get("Authorization", "").encode(), expected.encode()):
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Health", charset="UTF-8"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
+    def _web(self, method: str, path: str, body: bytes = b"") -> None:
+        import webapp
+        webapp.sync_hooks = (start_sync, sync_status)
+        webapp.diet_hooks = (start_diet_refresh, diet_status)  # lives here so the state isn't duplicated when run as __main__
+        if not self._authorized():
+            return
+        if method == "POST" and not self.headers.get("Content-Type", "").startswith("application/json"):
+            return self._reply(415)  # a cross-site form post can't send JSON, so this doubles as CSRF protection
+        conn = db()
+        try:
+            status, ctype, payload = webapp.route(method, path, body, conn)
+        except Exception:
+            log.exception("web %s %s failed", method, path)
+            status, ctype, payload = 500, "text/plain", b"internal error"
+        finally:
+            conn.close()
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "public, max-age=86400" if ctype.startswith("image/") else "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _report_pdf(self) -> None:
+        if not self._authorized():
             return
         try:
             pdf = live_report()
@@ -363,7 +467,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path != "/webhook":
-            return self._reply(404)
+            return self._web("POST", self.path.split("?")[0], self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 65_536)))
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         if not os.environ.get("WEBHOOK_SECRET"):
             return self._reply(404)  # polling-only mode
@@ -427,6 +531,9 @@ def scheduler() -> None:
             if run_job("report", weekly_report):
                 with conn:
                     set_state(conn, "last_report", now.date().isoformat())
+        last_diet = get_state(conn, "last_diet_refresh")
+        if not last_diet or now_utc() - datetime.fromisoformat(last_diet) > DIET_EVERY:
+            start_diet_refresh()  # background thread; a missing key or provider outage only logs
         conn.close()
         time.sleep(60)
 

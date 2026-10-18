@@ -466,7 +466,26 @@ def pill(ok: bool, text: str) -> str:
             else f'<span class="pill warn">{icon("target", WARN, 8)} {text}</span>')
 
 
-def build_html(a: dict) -> str:
+VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+# Overrides that turn the fixed A4 page into a responsive web page (the same charts and insights).
+WEB_CSS = """
+body { width: auto; height: auto; overflow: visible; zoom: 1.3; background: #f3f8f5; }
+.hero { background: linear-gradient(120deg, #0a6e58 0%, #0f9d7a 50%, #2bb594 100%); }
+.hero svg.wave path { fill: #f3f8f5; }
+.wrap { max-width: 215mm; margin: -8mm auto 0; padding-bottom: 6mm; }
+.card { overflow-x: auto; }
+.card.wide svg.chart { min-width: 640px; }
+@media (max-width: 760px) {
+  body { zoom: 1.1; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .grid, .insights { grid-template-columns: 1fr; }
+  .hero .badge { position: static; margin-top: 2mm; justify-content: flex-start; text-align: left; }
+}
+@media (prefers-color-scheme: dark) { html { background: #f3f8f5; } }
+"""
+
+
+def build_html(a: dict, web: bool = False) -> str:
     stages = a["total_stages"]
     asleep_total = sum(v for k, v in stages.items() if k != "AWAKE")
     pct = {k: 100 * stages[k] / asleep_total for k in ("DEEP", "LIGHT", "REM")}
@@ -550,7 +569,7 @@ def build_html(a: dict) -> str:
     good = good or ["<b>Data is flowing</b> — keep wearing the band day and night for a full picture."]
     focus = focus or ["<b>Nothing urgent</b> — keep doing what you're doing."]
 
-    return f"""<!doctype html><html><head><meta charset="utf-8"><style>
+    return f"""<!doctype html><html><head><meta charset="utf-8">{VIEWPORT if web else ""}<style>
 @page {{ size: A4; margin: 0; }}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ width: 210mm; height: 297mm; font-family: -apple-system, "SF Pro Text", "Helvetica Neue", Inter, "Noto Sans", sans-serif; color: {INK};
@@ -597,6 +616,7 @@ svg.gauge {{ width: 100%; margin-top: .6mm; }}
 .ins.good li::before {{ background: {GOOD}; }} .ins.warn li::before {{ background: {WARN}; }}
 .empty {{ font-size: 7.5pt; color: {MUTED}; padding: 20mm 0; text-align: center; }}
 footer {{ font-size: 6.3pt; color: {MUTED}; text-align: center; margin-top: 1.6mm; }}
+{WEB_CSS if web else ""}
 </style></head><body>
 <div class="hero">
   <h1>Your weekly health report</h1>
@@ -657,6 +677,14 @@ def generate(weight: float, height_cm: float, end: date | None = None) -> Path:
                     f"--print-to-pdf={pdf.resolve()}", html.resolve().as_uri()],
                    check=True, capture_output=True)
     return pdf
+
+
+def generate_html(weight: float, height_cm: float, end: date | None = None) -> str:
+    """The same report as a responsive web page, for the last REPORT_DAYS days before `end`."""
+    global window
+    end = end or date.today()
+    window = (end - timedelta(days=REPORT_DAYS), end)
+    return build_html(analyse(weight, height_cm), web=True)
 
 
 def main() -> None:

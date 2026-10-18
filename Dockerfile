@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 COPY *.py ./
+COPY web ./web
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 18787

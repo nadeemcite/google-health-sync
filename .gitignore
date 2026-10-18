@@ -18,3 +18,5 @@ demo/
 # Local tooling
 .claude/
 .DS_Store
+
+.serena/

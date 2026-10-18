@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Health</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0f9d7a">
+<style>
+:root { --bg:#f3f8f5; --card:#fff; --ink:#0d1b16; --ink2:#4a5b54; --muted:#84948d; --line:#dce8e2; --accent:#0f9d7a; --accent-dark:#0b7a61; --coral:#eb6834; --me:#0f9d7a; --bot:#e4efe9; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0e1513; --card:#16201d; --ink:#eef5f1; --ink2:#a9bab2; --muted:#74857e; --line:#25332f; --bot:#1e2b27; --me:#0f9d7a; } }
+* { box-sizing:border-box; margin:0; }
+html, body { height:100%; }
+body { font:16px/1.45 -apple-system,"SF Pro Text","Helvetica Neue",Inter,sans-serif; background:var(--bg); color:var(--ink); display:flex; flex-direction:column; height:100dvh; }
+header { padding:calc(env(safe-area-inset-top) + 10px) 14px 8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+header .chip { white-space:nowrap; }
+header h1 { font-size:18px; font-weight:750; letter-spacing:-.3px; }
+.chip { font-size:13px; background:var(--card); border:1px solid var(--line); border-radius:99px; padding:4px 11px; color:var(--ink2); cursor:pointer; }
+.chip b { color:var(--ink); }
+.chip.btn { font-weight:650; color:var(--accent-dark); display:inline-flex; align-items:center; gap:6px; }
+@media (prefers-color-scheme: dark) { .chip.btn { color:#5fd3b3; } }
+.chip.err { color:var(--coral); border-color:var(--coral); }
+.spin { width:11px; height:11px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:r .8s linear infinite; display:none; }
+.syncing .spin { display:inline-block; } @keyframes r { to { transform:rotate(360deg); } }
+#syncBtn { margin-left:auto; }
+nav { display:flex; gap:4px; padding:0 14px 8px; }
+nav button { border:0; background:none; font:inherit; font-weight:650; color:var(--muted); padding:6px 12px; border-radius:99px; cursor:pointer; }
+nav button.on { background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+main { flex:1; min-height:0; display:flex; flex-direction:column; }
+#chat { flex:1; overflow-y:auto; padding:6px 14px 10px; display:flex; flex-direction:column; gap:8px; }
+.msg { max-width:min(640px,88%); padding:9px 13px; border-radius:18px; white-space:pre-wrap; word-wrap:break-word; }
+.msg.assistant { background:var(--bot); border-bottom-left-radius:5px; align-self:flex-start; }
+.msg.user { background:var(--me); color:#fff; border-bottom-right-radius:5px; align-self:flex-end; }
+.msg.error { background:#fdeee4; color:#b04e12; align-self:center; font-size:14px; }
+.msg ul { padding-left:20px; margin:4px 0; }
+.typing span { display:inline-block; width:7px; height:7px; margin:0 2px; border-radius:50%; background:var(--muted); animation:b 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay:.15s; } .typing span:nth-child(3) { animation-delay:.3s; }
+@keyframes b { 0%,60%,100% { opacity:.25; transform:none; } 30% { opacity:1; transform:translateY(-3px); } }
+.chips { scrollbar-width:none; display:flex; gap:6px; overflow-x:auto; padding:0 14px 8px; }
+.chips button { white-space:nowrap; font:inherit; font-size:14px; border:1px solid var(--line); background:var(--card); color:var(--ink2); border-radius:99px; padding:5px 12px; cursor:pointer; }
+form#send { display:flex; gap:8px; padding:6px 14px calc(env(safe-area-inset-bottom) + 12px); }
+form#send textarea { flex:1; resize:none; font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:20px; padding:9px 14px; max-height:140px; }
+button.primary { font:inherit; font-weight:650; border:0; background:var(--accent); color:#fff; border-radius:20px; padding:0 18px; cursor:pointer; }
+button.primary:disabled { opacity:.5; }
+#reportWrap { flex:1; min-height:0; display:none; }
+#dietWrap { flex:1; min-height:0; display:none; padding:2px 14px calc(env(safe-area-inset-bottom) + 14px); gap:12px; }
+#dietWrap.on { display:grid; grid-template-columns:1.05fr 1.3fr 1fr; grid-template-rows:auto minmax(0,1fr); }
+.dbar { grid-column:1/-1; display:flex; align-items:center; gap:10px; flex-wrap:wrap; } .dbar .st { font-size:13px; color:var(--muted); }
+.col { min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column; gap:10px; }
+.col .dcard { margin:0; } .col .grow { flex:1; min-height:0; overflow:hidden; }
+@media (max-width:900px) { #dietWrap.on { display:block; overflow-y:auto; } .col { margin-bottom:10px; overflow:visible; } }
+.now .tag { display:inline-block; align-self:flex-start; font-size:12px; font-weight:750; letter-spacing:.6px; background:rgba(255,255,255,.22); border-radius:99px; padding:2px 10px; margin-bottom:8px; }
+.now.avoid { background:linear-gradient(120deg,#1c5cab,#2a78d6 55%,#4aa3e8); } .now.light { background:linear-gradient(120deg,#0b7a61,#14a37f 55%,#7cc9a0); }
+.now ul { list-style:none; padding:0; margin:10px 0 0; } .now li { font-size:16px; padding:6px 0; border-top:1px solid rgba(255,255,255,.2); } .now li:first-child { border-top:0; }
+.now .foot { margin-top:auto; padding-top:10px; font-size:13.5px; opacity:.9; border-top:1px solid rgba(255,255,255,.2); }
+.now.grow { display:flex; flex-direction:column; } .now .big { font-size:24px; line-height:1.15; }
+.clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.dcard.tight { padding:10px 12px; } .dcard.tight .note { font-size:13.5px; padding-top:1px; padding-bottom:1px; }
+.ghost { font:inherit; font-size:13px; border:1px solid var(--line); background:var(--card); color:var(--ink2); border-radius:99px; padding:4px 11px; cursor:pointer; }
+.dcard { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:13px 14px; margin-bottom:10px; }
+.dcard h3 { font-size:13px; font-weight:700; color:var(--ink2); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px; display:flex; align-items:center; }
+.dcard h3 .r { margin-left:auto; text-transform:none; font-weight:500; letter-spacing:0; color:var(--muted); }
+.now { background:linear-gradient(120deg,#0a6e58,#0f9d7a 55%,#2bb594); color:#fff; border:0; }
+.now h3 { color:rgba(255,255,255,.8); } .now .big { font-size:19px; font-weight:750; letter-spacing:-.3px; } .now p { opacity:.92; margin-top:4px; font-size:14.5px; }
+.meal { display:flex; gap:12px; padding:6px 0; border-top:1px solid var(--line); }
+.meal:first-of-type { border-top:0; }
+.meal .t { font-weight:750; font-variant-numeric:tabular-nums; min-width:46px; }
+.meal .n { font-weight:650; } .meal .w { color:var(--ink2); font-size:14px; line-height:1.35; } .meal .k { margin-left:auto; color:var(--muted); font-size:13px; white-space:nowrap; }
+.meal.next { background:rgba(15,157,122,.09); margin:0 -8px; padding:6px 8px; border-radius:10px; border-top-color:transparent; }
+.bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin:6px 0 4px; } .bar i { display:block; height:100%; background:var(--accent); border-radius:99px; }
+.bar.over i { background:var(--coral); }
+.note { font-size:14.5px; color:var(--ink2); padding:3px 0 3px 14px; position:relative; } .note::before { content:""; position:absolute; left:2px; top:11px; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+.note.no::before { background:var(--coral); }
+.frow { display:flex; gap:8px; margin-top:8px; } .frow input { flex:1; min-width:0; font:inherit; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:12px; padding:8px 11px; } .frow input.kc { flex:0 0 78px; }
+.logi { display:flex; font-size:14.5px; padding:5px 0; border-top:1px solid var(--line); gap:8px; } .logi:first-of-type { border-top:0; } .logi .k { margin-left:auto; color:var(--muted); } .logi button { border:0; background:none; color:var(--muted); cursor:pointer; font-size:16px; }
+.pill2 { display:inline-block; font-size:12.5px; background:var(--bot); color:var(--ink2); border-radius:99px; padding:2px 9px; margin:2px 4px 2px 0; }
+details.dcard summary { cursor:pointer; font-weight:650; } details.dcard label { display:block; font-size:13px; color:var(--ink2); margin:10px 0 3px; }
+details.dcard input { width:100%; font:inherit; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:10px; padding:8px 10px; }
+#reportWrap iframe { width:100%; height:100%; border:0; background:#f3f8f5; }
+dialog { border:0; border-radius:18px; padding:20px; width:min(440px,94vw); background:var(--card); color:var(--ink); }
+dialog::backdrop { background:rgba(0,0,0,.45); }
+dialog h2 { font-size:18px; margin-bottom:12px; }
+dialog label { display:block; font-size:13px; color:var(--ink2); margin:10px 0 3px; }
+dialog input { width:100%; font:inherit; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:10px; padding:8px 10px; }
+dialog .row { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+dialog button.ghost { font:inherit; border:0; background:none; color:var(--ink2); cursor:pointer; padding:8px 12px; }
+.hint { font-size:12.5px; color:var(--muted); margin-top:6px; }
+.hist { margin-top:14px; font-size:13px; color:var(--ink2); max-height:160px; overflow:auto; }
+.hist div { display:flex; justify-content:space-between; padding:3px 0; border-top:1px solid var(--line); }
+pre#memory { white-space:pre-wrap; font:13px/1.5 ui-monospace,Menlo,monospace; max-height:60vh; overflow:auto; background:var(--bg); padding:12px; border-radius:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Health</h1>
+  <span class="chip" id="weightChip" title="Log weight">–</span>
+  <span class="chip btn" id="syncBtn" title="Fetch the latest data from Google Health"><i class="spin"></i><span id="syncLabel">Sync</span></span>
+  <span class="chip btn" id="newChatBtn" title="Start a fresh conversation (memory is kept)">New chat</span>
+  <span class="chip" id="memoryBtn" title="What the assistant remembers about you">Memory</span>
+</header>
+<nav>
+  <button id="tabChat" class="on">Chat</button>
+  <button id="tabDiet">Diet</button>
+  <button id="tabReport">Report</button>
+</nav>
+<main>
+  <div id="chat"></div>
+  <div class="chips" id="suggestions">
+    <button>How was my week?</button><button>Am I on track with my weight?</button><button>How is my sleep?</button><button>What should I fix first?</button>
+  </div>
+  <form id="send">
+    <textarea id="input" rows="1" placeholder="Ask anything, or tell me how you're doing" enterkeyhint="send"></textarea>
+    <button class="primary" id="sendBtn">Send</button>
+  </form>
+  <div id="dietWrap">
+    <div class="dbar"><b>Diet</b><span class="st" id="dStatus"></span><span class="chip btn" id="dRefresh" style="margin-left:auto"><i class="spin"></i><span>Update</span></span><span class="chip" id="dPrefsBtn">Preferences</span></div>
+    <section class="col" id="colNow"></section>
+    <section class="col" id="colPlan"></section>
+    <section class="col" id="colInfo"></section>
+  </div>
+  <div id="reportWrap"><iframe id="report" title="Weekly report"></iframe></div>
+</main>
+
+<dialog id="weightDlg">
+  <form method="dialog" id="weightForm">
+    <h2>Weight &amp; profile</h2>
+    <label>Weight today (kg)</label><input id="wKg" type="number" step="0.1" min="20" max="400" inputmode="decimal">
+    <label>Date (leave as today unless back-filling)</label><input id="wDate" type="date">
+    <label>Note (optional)</label><input id="wNote" maxlength="200" placeholder="morning, fasted…">
+    <div class="hint">Weigh-ins you log in the Google Health / Fitbit app sync here automatically. Use this for anything else.</div>
+    <label>Height (cm)</label><input id="pHeight" type="number" step="0.5" min="80" max="260" inputmode="decimal">
+    <label>Goal weight (kg, optional)</label><input id="pGoal" type="number" step="0.5" min="20" max="400" inputmode="decimal">
+    <div class="hist" id="wHist"></div>
+    <div class="row"><button type="button" class="ghost" id="wCancel">Close</button><button class="primary" style="padding:9px 18px">Save</button></div>
+  </form>
+</dialog>
+<dialog id="prefsDlg">
+  <h2>Diet preferences</h2>
+  <label>Diet style (vegetarian, high-protein, …)</label><input id="dStyle" maxlength="200">
+  <label>Allergies, dislikes, foods to avoid</label><input id="dAvoid" maxlength="200">
+  <label>Daily calories (empty = let the plan decide)</label><input id="dKcal" type="number" min="800" max="6000" inputmode="numeric">
+  <label>Goal weight in kg (empty = derive it from BMI)</label><input id="dGoal" type="number" step="0.5" min="20" max="400" inputmode="decimal">
+  <div class="row"><button type="button" class="ghost" onclick="prefsDlg.close()">Cancel</button><button class="primary" id="dSave" style="padding:9px 18px">Save and update plan</button></div>
+</dialog>
+<dialog id="memoryDlg">
+  <h2>What I remember about you</h2>
+  <pre id="memory"></pre>
+  <div class="hint">This file is rewritten after every conversation. Tell me in chat if something in it is wrong.</div>
+  <div class="row"><button class="primary" style="padding:9px 18px" onclick="memoryDlg.close()">Close</button></div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const chat = $('chat'), input = $('input'), sendBtn = $('sendBtn');
+let busy = false;
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function render(text) {  // minimal markdown: escape first, then **bold** and "- " lists
+  const esc = text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const html = esc.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split('\n').map(l => /^\s*[-•] /.test(l) ? '<li>' + l.replace(/^\s*[-•] /, '') + '</li>' : l + '\n').join('')
+    .replace(/(<li>.*?<\/li>)+/gs, m => '<ul>' + m + '</ul>');
+  return html.trim();
+}
+function add(role, text) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + role;
+  if (role === 'assistant') el.innerHTML = render(text); else el.textContent = text;
+  chat.appendChild(el); chat.scrollTop = chat.scrollHeight;
+  return el;
+}
+function typing() {
+  const el = document.createElement('div');
+  el.className = 'msg assistant typing'; el.innerHTML = '<span></span><span></span><span></span>';
+  chat.appendChild(el); chat.scrollTop = chat.scrollHeight; return el;
+}
+function setMessages(list) { chat.innerHTML = ''; list.forEach(m => add(m.role, m.content)); }
+
+function ago(iso) {
+  if (!iso) return 'never';
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago';
+}
+let pollTimer = null;
+function showSync(s) {
+  const b = $('syncBtn');
+  b.classList.toggle('syncing', s.sync.running); b.classList.toggle('err', !!s.sync.error && !s.sync.running);
+  $('syncLabel').textContent = s.sync.running ? 'Syncing…' : s.sync.error ? 'Sync failed, retry' : 'Synced ' + ago(s.last_sync);
+  b.title = s.sync.error || 'Fetch the latest data from Google Health';
+  if (s.sync.running && !pollTimer) pollTimer = setInterval(() => refreshState().catch(() => {}), 2000);
+  if (!s.sync.running && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+$('syncBtn').onclick = async () => {
+  if ($('syncBtn').classList.contains('syncing')) return;
+  try { showSync(await api('/api/sync', {})); } catch (e) { add('error', e.message); }
+};
+$('newChatBtn').onclick = async () => {
+  if (busy) return;
+  try { setMessages((await api('/api/new-chat', {})).messages); } catch (e) { add('error', e.message); return; }
+  $('suggestions').style.display = ''; tab('chat'); input.focus();
+};
+
+async function refreshState() {
+  const s = await api('/api/state');
+  showSync(s);
+  const p = s.profile;
+  $('weightChip').innerHTML = p.weight_kg ? `<b>${p.weight_kg.toFixed(1)} kg</b>${p.bmi ? ' · BMI ' + p.bmi : ''}${p.height_cm ? ' · ' + p.height_cm + ' cm' : ''}` : 'Log weight';
+  return s;
+}
+
+async function ask(text) {
+  if (busy || !text.trim()) return;
+  busy = true; sendBtn.disabled = true;
+  add('user', text); input.value = ''; input.style.height = 'auto';
+  $('suggestions').style.display = 'none';
+  const dots = typing();
+  try { add('assistant', (await api('/api/chat', { message: text })).reply); }
+  catch (e) { add('error', e.message); }
+  dots.remove(); busy = false; sendBtn.disabled = false; input.focus();
+  refreshState().catch(() => {});
+}
+
+$('send').addEventListener('submit', e => { e.preventDefault(); ask(input.value); });
+input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(input.value); } });
+input.addEventListener('input', () => { input.style.height = 'auto'; input.style.height = input.scrollHeight + 'px'; });
+$('suggestions').addEventListener('click', e => e.target.tagName === 'BUTTON' && ask(e.target.textContent));
+
+function tab(name) {
+  const isChat = name === 'chat';
+  for (const [id, n] of [['tabChat', 'chat'], ['tabDiet', 'diet'], ['tabReport', 'report']]) $(id).classList.toggle('on', n === name);
+  chat.style.display = isChat ? '' : 'none'; $('send').style.display = isChat ? '' : 'none';
+  $('suggestions').style.display = isChat && !chat.querySelector('.user') ? '' : 'none';
+  $('dietWrap').classList.toggle('on', name === 'diet');
+  $('reportWrap').style.display = name === 'report' ? 'block' : 'none';
+  if (name === 'report') $('report').src = '/report?t=' + Math.floor(Date.now() / 600000);  // cache-bust every 10 minutes
+  if (name === 'diet') loadDiet();
+}
+$('tabChat').onclick = () => tab('chat'); $('tabDiet').onclick = () => tab('diet'); $('tabReport').onclick = () => tab('report');
+
+
+// ---------- diet tab ----------
+let diet = null, pollTimer2 = null;
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const hhmm = m => { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
+const toMin = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+const dur = m => m < 60 ? m + ' min' : Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '');
+const dietOpen = () => $('dietWrap').classList.contains('on');
+
+async function loadDiet() {
+  try { diet = await api('/api/diet'); } catch (e) { add('error', e.message); return; }
+  renderDiet();
+  if (diet.refresh.running) pollDiet();
+  else if ((diet.now_stale || diet.plan_stale) && diet.target) startRefresh(false);  // opening the tab should always answer "what now?"
+}
+async function startRefresh(full) {
+  try { diet = await api('/api/diet-refresh', { full }); } catch (e) { add('error', e.message); return; }
+  renderDiet(); pollDiet();
+}
+function pollDiet() {
+  if (pollTimer2) return;
+  pollTimer2 = setInterval(async () => {
+    try { diet = await api('/api/diet'); renderDiet(); } catch (e) { /* keep polling */ }
+    if (!diet || !diet.refresh.running) { clearInterval(pollTimer2); pollTimer2 = null; }
+  }, 2500);
+}
+function mealsFromWake(meals) {  // order the day from when they wake, so a night shift reads naturally
+  const wake = diet.routine.wake ? diet.routine.wake[0] * 60 : 0;
+  return [...meals].sort((a, b) => ((toMin(a.time) - wake + 1440) % 1440) - ((toMin(b.time) - wake + 1440) % 1440));
+}
+function nextMeal(plan) {
+  const d = new Date(), now = d.getHours() * 60 + d.getMinutes();
+  return plan.meals.map(m => ({ ...m, away: (toMin(m.time) - now + 1440) % 1440 })).sort((a, b) => a.away - b.away)[0];
+}
+function renderDiet() {
+  if (!diet) return;
+  const t = diet.target, plan = diet.plan && diet.plan.plan, r = diet.routine, run = diet.refresh.running;
+  $('dRefresh').classList.toggle('syncing', run);
+  $('dRefresh').lastChild.textContent = run ? 'Updating…' : 'Update';
+  $('dStatus').textContent = diet.refresh.error ? 'Update failed: ' + diet.refresh.error
+    : [plan ? 'plan ' + ago(diet.plan.at) : '', diet.now ? 'advice as of ' + diet.now.at.slice(11, 16) : ''].filter(Boolean).join(' · ');
+  if (!t) { $('colNow').innerHTML = '<div class="dcard now grow"><h3>Diet</h3><div class="big">Log your weight and set your height first</div><p>Tap the weight chip at the top.</p></div>'; $('colPlan').innerHTML = $('colInfo').innerHTML = ''; return; }
+  renderNow(); renderPlan(plan, r); renderInfo(t, plan, r);
+}
+function renderNow() {
+  if (!diet || !diet.target) return;
+  const plan = diet.plan && diet.plan.plan, adv = diet.now, d = new Date(), run = diet.refresh.running;
+  const left = plan ? (diet.prefs.kcal_target || plan.daily_kcal) - diet.today_kcal : null;
+  const nm = plan ? nextMeal(plan) : null;
+  const foot = [nm ? `Next meal: ${esc(nm.name)} at ${nm.time} (in ${dur(nm.away)})` : '', left !== null ? (left >= 0 ? `${left} kcal left today` : `${-left} kcal over today's target`) : ''].filter(Boolean).join(' · ');
+  const tag = { eat: 'EAT NOW', light: 'LIGHT ONLY', avoid: "DON'T EAT" };
+  let body;
+  if (adv) body = `<span class="tag">${tag[adv.action]}</span><div class="big">${esc(adv.headline)}</div>`
+    + (adv.foods.length ? `<ul>${adv.foods.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : '') + `<p>${esc(adv.why)}</p>`
+    + (diet.now_stale ? `<p style="font-size:13px">${run ? 'Checking this against the time now…' : 'From ' + adv.at.slice(11, 16) + '. Tap Update for a fresh answer.'}</p>` : '');
+  else body = `<div class="big">${run ? 'Working out what you should do now…' : diet.refresh.error ? 'Could not get advice' : 'No advice yet'}</div><p>${run ? 'This takes under a minute the first time.' : 'Tap Update.'}</p>`;
+  $('colNow').innerHTML = `<div class="dcard now grow ${adv ? adv.action : ''}"><h3>Right now · ${hhmm(d.getHours() * 60 + d.getMinutes())}</h3>${body}<div class="foot">${foot || '&nbsp;'}</div></div>`;
+}
+function renderPlan(plan, r) {
+  if (!plan) { $('colPlan').innerHTML = `<div class="dcard grow"><h3>Diet plan</h3>${diet.refresh.running ? '<div class="typing"><span></span><span></span><span></span></div> Building a plan around your routine…' : 'No plan yet. Tap Update.'}</div>`; return; }
+  const meals = mealsFromWake(plan.meals), nxt = nextMeal(plan);
+  $('colPlan').innerHTML = `<div class="dcard grow"><h3>Your diet plan <span class="r">what to eat, and when</span></h3>
+    <div><span class="pill2">${plan.daily_kcal} kcal</span><span class="pill2">${plan.protein_g} g protein</span><span class="pill2">${plan.water_l} L water</span></div>
+    <div class="clamp" style="margin:6px 0 4px;color:var(--ink2);font-size:14px">${esc(plan.summary)}</div>`
+    + meals.map(m => `<div class="meal${m.time === nxt.time && m.name === nxt.name ? ' next' : ''}"><div class="t">${m.time}</div><div><div class="n">${esc(m.name)}</div><div class="w">${esc(m.what)}</div></div><div class="k">${m.kcal} kcal</div></div>`).join('') + '</div>';
+}
+function renderInfo(t, plan, r) {
+  const goalTxt = t.direction === 'maintain' ? `Maintain ${t.goal_kg} kg` : `${t.direction === 'lose' ? 'Lose' : 'Gain'} to ${t.goal_kg} kg · ~${t.kg_per_week} kg/week${t.weeks ? ` · ~${t.weeks} wk` : ''}`;
+  const built = [r.work ? `work ${hhmm(r.work[0] * 60)}–${hhmm(r.work[1] * 60)}` : '', r.bed && r.wake ? `sleep ${hhmm(r.bed[0] * 60)} → ${hhmm(r.wake[0] * 60)}` : '', diet.prefs.diet_style, diet.prefs.diet_avoid ? 'avoid ' + diet.prefs.diet_avoid : '', diet.lifestyle ? 'your Memory notes' : ''].filter(Boolean);
+  const goal = diet.prefs.kcal_target || (plan && plan.daily_kcal) || 0;
+  const tips = plan ? [...plan.timing_notes.slice(0, 2).map(n => `<div class="note">${esc(n)}</div>`), ...plan.avoid.slice(0, 2).map(n => `<div class="note no">Avoid: ${esc(n)}</div>`)].join('') : '';
+  const keep = { t: $('foodText') && $('foodText').value, k: $('foodKcal') && $('foodKcal').value, f: document.activeElement && document.activeElement.id };  // polling must not wipe a half-typed entry
+  $('colInfo').innerHTML = `<div class="dcard tight"><h3>Your target</h3><div><b>BMI ${t.bmi}</b> · ${t.category}${t.auto ? ' <span class="pill2">from BMI</span>' : ''}</div><div style="font-size:14.5px">${goalTxt}</div>
+      <div style="margin-top:6px;font-size:12.5px;color:var(--muted)">Built around: ${built.map(esc).join(' · ') || 'defaults'}</div></div>
+    <div class="dcard tight"><h3>Today's food <span class="r">${diet.today_kcal}${goal ? ' / ' + goal : ''} kcal${diet.unknown_kcal ? ` · ${diet.unknown_kcal} w/o kcal` : ''}</span></h3>
+      <div class="bar${goal && diet.today_kcal > goal ? ' over' : ''}"><i style="width:${goal ? Math.min(100, 100 * diet.today_kcal / goal) : 0}%"></i></div>
+      ${diet.today.slice(-3).map(f => `<div class="logi"><span>${f.at.slice(11, 16)}</span><span>${esc(f.text)}</span><span class="k">${f.kcal != null ? f.kcal + ' kcal' : ''}</span><button data-del="${f.id}" title="Remove">×</button></div>`).join('') || '<div class="hint">Nothing logged today. Add it here or tell the assistant.</div>'}
+      <form class="frow" id="foodForm"><input id="foodText" placeholder="What did you eat?" maxlength="300"><input class="kc" id="foodKcal" type="number" min="0" max="5000" placeholder="kcal" inputmode="numeric"><button class="primary" style="padding:6px 14px">Add</button></form></div>
+    ${tips ? `<div class="dcard tight grow"><h3>Timing rules &amp; avoid</h3>${tips}</div>` : ''}`;
+  if (keep.t) $('foodText').value = keep.t;
+  if (keep.k) $('foodKcal').value = keep.k;
+  if (keep.f === 'foodText' || keep.f === 'foodKcal') $(keep.f).focus();
+}
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'foodForm') return;
+  e.preventDefault(); const text = $('foodText').value.trim(); if (!text) return;
+  try { diet = { ...diet, ...(await api('/api/food', { text, kcal: $('foodKcal').value })) }; renderDiet(); startRefresh(false); }  // new food changes what to eat next
+  catch (err) { add('error', err.message); }
+});
+document.addEventListener('click', async e => {
+  if (!e.target.dataset || !e.target.dataset.del) return;
+  diet = { ...diet, ...(await api('/api/food-delete', { id: +e.target.dataset.del })) }; renderDiet();
+});
+$('dRefresh').onclick = () => { if (!diet || !diet.refresh.running) startRefresh(true); };
+$('dPrefsBtn').onclick = () => {
+  if (!diet) return;
+  $('dStyle').value = diet.prefs.diet_style; $('dAvoid').value = diet.prefs.diet_avoid; $('dKcal').value = diet.prefs.kcal_target || ''; $('dGoal').value = diet.prefs.goal_weight_kg || '';
+  prefsDlg.showModal();
+};
+$('dSave').onclick = async e => {
+  e.preventDefault();
+  try { await api('/api/profile', { diet_style: $('dStyle').value, diet_avoid: $('dAvoid').value, kcal_target: $('dKcal').value, goal_weight_kg: $('dGoal').value }); prefsDlg.close(); await loadDiet(); startRefresh(true); }
+  catch (err) { add('error', err.message); }
+};
+setInterval(() => { if (dietOpen() && diet) renderNow(); }, 60000);
+
+// weight & profile dialog
+$('weightChip').onclick = async () => {
+  const s = await refreshState();
+  $('wKg').value = ''; $('wDate').value = new Date().toLocaleDateString('en-CA'); $('wDate').max = $('wDate').value; $('wNote').value = '';
+  $('pHeight').value = s.profile.height_cm || ''; $('pGoal').value = s.profile.goal_weight_kg || '';
+  $('wHist').innerHTML = s.weights.slice(-12).reverse().map(w => `<div><span>${w.at.slice(0, 10)}</span><span>${w.kg.toFixed(1)} kg · ${w.source.replace('_', ' ')}</span></div>`).join('') || 'No weigh-ins yet.';
+  weightDlg.showModal();
+};
+$('wCancel').onclick = () => weightDlg.close();
+$('weightForm').addEventListener('submit', async () => {
+  try {
+    if ($('pHeight').value || $('pGoal').value) await api('/api/profile', { height_cm: $('pHeight').value, goal_weight_kg: $('pGoal').value });
+    if ($('wKg').value) await api('/api/weight', { kg: $('wKg').value, date: $('wDate').value, note: $('wNote').value });
+    await refreshState();
+    if ($('wKg').value) add('assistant', `Logged ${(+$('wKg').value).toFixed(1)} kg.`);
+  } catch (e) { add('error', e.message); }
+});
+$('memoryBtn').onclick = async () => { $('memory').textContent = (await api('/api/memory')).markdown; memoryDlg.showModal(); };
+
+if (location.hash === '#diet') setTimeout(() => tab('diet'), 0);  // deep link, e.g. a home-screen shortcut
+// start: show history, then let the assistant open today's conversation
+(async () => {
+  try {
+    const [, hist] = await Promise.all([refreshState(), api('/api/chat')]);
+    setMessages(hist.messages);
+    $('suggestions').style.display = hist.messages.some(m => m.role === 'user') ? 'none' : '';
+    const dots = typing();
+    try { setMessages((await api('/api/briefing', {})).messages); }
+    catch (e) { dots.remove(); add('error', e.message); }
+  } catch (e) { add('error', e.message); }
+})();
+</script>
+</body>
+</html>

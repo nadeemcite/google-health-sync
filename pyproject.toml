@@ -1,12 +1,14 @@
 [project]
 name = "google-health-sync"
-version = "0.1.0"
-description = "Self-hosted sync of your Google Health API (Fitbit / Pixel Watch) data to SQLite, with webhooks and a weekly PDF report"
+version = "0.2.0"
+description = "Self-hosted health assistant: syncs Google Health (Fitbit / Pixel Watch) data to SQLite, then adds a chat assistant with memory, a diet planner and weekly reports"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "google-auth>=2.61.0",
     "google-auth-oauthlib>=1.5.0",
+    "litellm>=1.106.0",
+    "mcp>=2.3.0",
     "python-dotenv>=1.2.4",
     "requests>=2.34.2",
 ]
