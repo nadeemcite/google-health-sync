@@ -13,6 +13,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen
       - run: uv run python -m compileall -q .
+      - name: Tests (no network or model needed)
+        run: uv run python -m unittest discover -s tests -v
       - name: Build a report from synthetic data
         env:
           HEALTH_DB: demo/health.db
